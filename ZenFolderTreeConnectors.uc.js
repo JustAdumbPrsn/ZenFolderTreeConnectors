@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zen Folder Tree Connectors
 // @description  Draws tree connectors for Zen Browser folders
-// @version      1.0.0
+// @version      1.1
 // @author       JustAdumbPrsn
 // @grant        none
 // ==/UserScript==
@@ -145,11 +145,18 @@
         return;
       }
 
+      const workspace = folder.closest("zen-workspace");
+      const isPinned = folder.closest(".zen-workspace-pinned-tabs-section");
+      const isWorkspacePinnedCollapsed =
+        isPinned && workspace?.hasAttribute("collapsedpinnedtabs");
+
       const isSidebarExpanded =
         document.documentElement.getAttribute("zen-sidebar-expanded") ===
         "true";
       const isFolderOpenOrActive =
-        !folder.hasAttribute("collapsed") || folder.hasAttribute("has-active");
+        (!folder.hasAttribute("collapsed") ||
+          folder.hasAttribute("has-active")) &&
+        !isWorkspacePinnedCollapsed;
 
       const kids =
         isSidebarExpanded && isFolderOpenOrActive
@@ -326,10 +333,10 @@
       this.scheduleUpdate();
     }
 
-    on_TabGroupExpand() {
+    on_TabGroupExpand(event) {
       this.scheduleUpdate();
     }
-    on_TabGroupCollapse() {
+    on_TabGroupCollapse(event) {
       this.scheduleUpdate();
     }
     on_TabGrouped() {
