@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zen Folder Tree Connectors
 // @description  Draws tree connectors for Zen Browser folders
-// @version      1.2
+// @version      1.3
 // @author       JustAdumbPrsn
 // @grant        none
 // ==/UserScript==
@@ -225,6 +225,13 @@
       for (const tab of tabs) {
         tab.classList.remove("zen-is-related-child", "zen-is-related-parent");
 
+        // Only draw connectors for tabs that live inside a zen-folder.
+        if (!tab.closest("zen-folder")) {
+          activeParent = null;
+          lineage.clear();
+          continue;
+        }
+
         const isBoundary =
           tab.pinned ||
           tab.group ||
@@ -300,8 +307,7 @@
           if (item.isZenFolder) {
             const rootMost = item.rootMostCollapsedFolder;
 
-            // If this folder is collapsed under a different root-most ancestor,
-            // recurse into its active child. Otherwise treat it as a leaf node.
+            result.push(item);
             if (isParentCollapsed || (rootMost && rootMost !== item)) {
               const subContainer = item.querySelector(
                 ":scope > .tab-group-container",
@@ -309,8 +315,6 @@
               if (subContainer) {
                 result.push(...this.#getVisibleChildren(subContainer, true));
               }
-            } else {
-              result.push(item);
             }
           }
         } else if (window.gBrowser.isTab(item)) {
