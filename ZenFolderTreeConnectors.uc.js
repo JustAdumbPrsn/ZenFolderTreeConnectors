@@ -101,22 +101,16 @@
       }
 
       try {
-        const activeWorkspace = document.querySelector(
-          "zen-workspace[active='true']",
-        );
-
         this.#refreshVisualRelationships();
 
-        const folders = activeWorkspace
-          ? activeWorkspace.querySelectorAll("zen-folder")
-          : document.querySelectorAll("zen-folder");
+        this.#registerResizeObservers();
+
+        const folders = document.querySelectorAll("zen-folder");
         for (const folder of folders) {
           this.#refreshFolderConnector(folder);
         }
 
-        const relatedParents = activeWorkspace
-          ? activeWorkspace.querySelectorAll("tab.zen-is-related-parent")
-          : document.querySelectorAll("tab.zen-is-related-parent");
+        const relatedParents = document.querySelectorAll("tab.zen-is-related-parent");
         for (const parent of relatedParents) {
           this.#refreshRelatedTabConnector(parent);
         }
@@ -391,6 +385,14 @@
     }
 
     #refreshRelatedTabConnector(parent) {
+      let connector = parent.querySelector(":scope > .tree-connector");
+
+      // If parent is invisible (e.g. inactive workspace), hide the connector entirely
+      if (parent.offsetHeight === 0) {
+        if (connector?._isVisualConnector) connector.hidden = true;
+        return;
+      }
+
       const descendants = [];
       let sibling = parent.nextElementSibling;
       while (sibling?.classList.contains("zen-is-related-child")) {
@@ -398,7 +400,6 @@
         sibling = sibling.nextElementSibling;
       }
 
-      let connector = parent.querySelector(":scope > .tree-connector");
       if (!descendants.length) {
         if (connector?._isVisualConnector) connector.hidden = true;
         return;
@@ -425,7 +426,7 @@
           const itemRect =
             this.#windowUtils.getBoundsWithoutFlushing(targetElement);
 
-          // Prefer checking inline style before  triggering a full getComputedStyle recalc.
+          // Prefer checking inline style before triggering a full getComputedStyle recalc.
           let tx = 0,
             ty = 0;
           const inlineTransform = targetElement.style.transform;
