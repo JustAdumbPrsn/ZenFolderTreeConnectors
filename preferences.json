@@ -1,0 +1,37 @@
+[
+  {
+    "type": "text",
+    "label": "Zen Folder Tree Connectors",
+    "margin": "30px 0 30px 0",
+    "size": "20px"
+  },
+  {
+    "type": "separator",
+    "label": "Optional Features",
+    "margin": "15px 0 15px 0"
+  },
+  {
+    "type": "checkbox",
+    "property": "sine.zen-folder-tree-connectors.interactive-trunk",
+    "label": "Interactive Tree Trunk",
+    "margin": "12px 0 4px 0"
+  },
+  {
+    "type": "text",
+    "label": "Click on the connector line of any open folder to collapse it immediately.",
+    "margin": "0 0 12px 24px",
+    "size": "12px"
+  },
+  {
+    "type": "checkbox",
+    "property": "sine.zen-folder-tree-connectors.active-highlight",
+    "label": "Active Tree Highlighting",
+    "margin": "12px 0 4px 0"
+  },
+  {
+    "type": "text",
+    "label": "Brighten the folder connection lines from 0.25 to 0.40 opacity when selected, hovered, or containing active tabs.",
+    "margin": "0 0 12px 24px",
+    "size": "12px"
+  }
+]
