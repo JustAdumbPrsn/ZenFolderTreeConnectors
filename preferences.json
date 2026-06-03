@@ -1,0 +1,26 @@
+[
+    {
+        "type": "checkbox",
+        "property": "zen.theme.folder-tree-connectors.interactive",
+        "label": "Interactive Tree Connectors",
+        "margin": "12px 0 4px 0"
+    },
+    {
+        "type": "text",
+        "label": "Allows you to collapse or expand folders by clicking on their connection lines. Adds a generous invisible hitbox for ease of use.",
+        "margin": "0 0 12px 24px",
+        "size": "12px"
+    },
+    {
+        "type": "checkbox",
+        "property": "zen.theme.folder-tree-connectors.highlight-hover",
+        "label": "Highlight Tree on Hover",
+        "margin": "12px 0 4px 0"
+    },
+    {
+        "type": "text",
+        "label": "When you hover over a folder, its tree conector will highlight to make the hierarchy clear.",
+        "margin": "0 0 12px 24px",
+        "size": "12px"
+    }
+]

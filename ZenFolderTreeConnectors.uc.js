@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zen Folder Tree Connectors
 // @description  Draws tree connectors for Zen Browser folders
-// @version      2.0
+// @version      2.1
 // @author       JustAdumbPrsn
 // @grant        none
 // ==/UserScript==
@@ -11,6 +11,9 @@
   const SVG_NS = "http://www.w3.org/2000/svg";
   const PREF_OWNED_TABS = "zen.folders.owned-tabs-in-folder";
   const PREF_WORKSPACE_ANIM = "zen.workspaces.switch-animation-duration";
+  
+  const PREF_INTERACTIVE = "zen.theme.folder-tree-connectors.interactive";
+  const PREF_HIGHLIGHT_HOVER = "zen.theme.folder-tree-connectors.highlight-hover";
 
   const GEO = Object.freeze({
     LINE_X: 6,
@@ -108,6 +111,10 @@
 
       this.#bindEventListeners();
       this.#bindPrefObserver();
+      
+      // Inject initial preference states into the DOM
+      this.#updateInteractivePref();
+      this.#updateHighlightHoverPref();
 
       this.#initialized = true;
       this.#relationshipClassesDirty = true;
@@ -120,6 +127,7 @@
       if (!this.#initialized) return;
 
       this.#stopAnimation();
+      
       this.#resizeObserver?.disconnect();
       this.#resizeObserver = null;
       this.#mutationObserver?.disconnect();
@@ -130,7 +138,12 @@
 
       try {
         Services.prefs.removeObserver(PREF_OWNED_TABS, this);
+        Services.prefs.removeObserver(PREF_INTERACTIVE, this);
+        Services.prefs.removeObserver(PREF_HIGHLIGHT_HOVER, this);
       } catch {}
+
+      document.documentElement.removeAttribute("zen-tree-connectors-interactive");
+      document.documentElement.removeAttribute("zen-tree-connectors-highlight-hover");
 
       this.#removeAllRelationshipClasses();
 
@@ -138,7 +151,7 @@
         el.remove();
       }
 
-      this.#observedElements = new Set();
+      this.#observedElements.clear();
       this.#lastPaths = new WeakMap();
       this.#connectors = new WeakMap();
       this.#lineageMap.clear();
@@ -150,12 +163,6 @@
       this.#initialized = false;
     }
 
-    /**
-     * Schedules a repaint of all tree connectors.
-     *
-     * @param {boolean} aIsContinuous - If true, drives a rAF loop for the given duration.
-     * @param {number} aDuration - How long in ms to keep repainting, used for animations.
-     */
     scheduleUpdate(aIsContinuous = false, aDuration = 0) {
       if (aDuration > 0) {
         this.#animationEndTime = Math.max(this.#animationEndTime, Date.now() + aDuration);
@@ -211,11 +218,28 @@
         clearTimeout(this.#animationTimeout);
         this.#animationTimeout = null;
       }
-      this.#scheduleSingleFrame();
     }
 
     get #ownedTabsInFolder() {
       return Services.prefs.getBoolPref(PREF_OWNED_TABS, false);
+    }
+
+    #updateInteractivePref() {
+      const isInteractive = Services.prefs.getBoolPref(PREF_INTERACTIVE, false);
+      if (isInteractive) {
+        document.documentElement.setAttribute("zen-tree-connectors-interactive", "true");
+      } else {
+        document.documentElement.removeAttribute("zen-tree-connectors-interactive");
+      }
+    }
+
+    #updateHighlightHoverPref() {
+      const isHighlightHover = Services.prefs.getBoolPref(PREF_HIGHLIGHT_HOVER, false);
+      if (isHighlightHover) {
+        document.documentElement.setAttribute("zen-tree-connectors-highlight-hover", "true");
+      } else {
+        document.documentElement.removeAttribute("zen-tree-connectors-highlight-hover");
+      }
     }
 
     #getBoundsWithoutFlushing(aElement) {
@@ -223,7 +247,6 @@
       try {
         return window.windowUtils.getBoundsWithoutFlushing(aElement);
       } catch (e) {
-        console.warn("nsZenFolderTreeConnectors: getBoundsWithoutFlushing failed", e);
         return null;
       }
     }
@@ -231,8 +254,7 @@
     #repaint() {
       if (!window.gBrowser) return;
 
-      const sidebarExpanded =
-        document.documentElement.getAttribute("zen-sidebar-expanded") === "true";
+      const sidebarExpanded = document.documentElement.getAttribute("zen-sidebar-expanded") === "true";
 
       if (!sidebarExpanded) {
         if (this.#needsCleanUp) {
@@ -266,12 +288,9 @@
 
       for (const folder of window.gBrowser.tabGroups) {
         if (!folder.isZenFolder) continue;
-
-        // Skip visual lines for the internal Zen Collapsible Pins module.
         if (folder.tagName.toLowerCase() === "zen-workspace-collapsible-pins") continue;
 
-        const container =
-          folder.groupContainer || folder.querySelector(":scope > .tab-group-container");
+        const container = folder.groupContainer || folder.querySelector(":scope > .tab-group-container");
         if (!container) continue;
 
         if (this.#isFolderHidden(folder, activeWorkspaceId)) {
@@ -317,13 +336,7 @@
         } else {
           this.#pendingWrites.push({
             host: parentTab,
-            pathData: this.#buildPath(
-              parentTab,
-              children,
-              true,
-              this.#getBoundsWithoutFlushing(parentTab),
-              isRTL
-            ),
+            pathData: this.#buildPath(parentTab, children, true, this.#getBoundsWithoutFlushing(parentTab), isRTL),
             isRelated: true,
           });
         }
@@ -390,34 +403,25 @@
 
     #buildPath(aHost, aTargets, aIsRelated, aContextRect, aIsRTL) {
       const { LINE_X, BRANCH_RADIUS } = GEO;
-
       const hostRect = this.#getBoundsWithoutFlushing(aHost);
       if (!hostRect || hostRect.width === 0) return "";
 
       const points = [];
 
       for (const target of aTargets) {
-        const measuredEl = aIsRelated
-          ? (target.querySelector(".tab-stack") ?? target)
-          : target;
-
+        const measuredEl = aIsRelated ? (target.querySelector(".tab-stack") ?? target) : target;
         const targetRect = this.#getBoundsWithoutFlushing(measuredEl);
         if (!targetRect || targetRect.width === 0) continue;
 
-        const x = aIsRTL
-          ? hostRect.right - targetRect.right
-          : targetRect.left - hostRect.left;
-
+        const x = aIsRTL ? hostRect.right - targetRect.right : targetRect.left - hostRect.left;
         const branchMidY = this.#branchMidY(target, targetRect, aIsRelated);
         const y = targetRect.top - hostRect.top + branchMidY;
 
         if (y <= 1) continue;
-
         points.push({ x, y, r: Math.min(BRANCH_RADIUS, Math.max(0, x - LINE_X)) });
       }
 
       if (points.length === 0) return "";
-
       points.sort((a, b) => a.y - b.y);
 
       const last = points[points.length - 1];
@@ -436,28 +440,21 @@
 
     #branchMidY(aItem, aTargetRect, aIsRelated) {
       if (aIsRelated) return aTargetRect.height / 2;
-
       if (aItem.isZenFolder) {
-        const label =
-          aItem.labelElement?.parentElement ||
-          aItem.querySelector(":scope > .tab-group-label-container");
+        const label = aItem.labelElement?.parentElement || aItem.querySelector(":scope > .tab-group-label-container");
         if (label) {
           const labelRect = this.#getBoundsWithoutFlushing(label);
           return labelRect ? labelRect.height / 2 : 0;
         }
         return 0;
       }
-
       if (window.gBrowser.isTabGroup?.(aItem)) {
         const firstTab = aItem.tabs?.[0];
         if (firstTab) {
           const tabRect = this.#getBoundsWithoutFlushing(firstTab);
-          return tabRect
-            ? tabRect.top - aTargetRect.top + tabRect.height / 2
-            : aTargetRect.height / 2;
+          return tabRect ? tabRect.top - aTargetRect.top + tabRect.height / 2 : aTargetRect.height / 2;
         }
       }
-
       return aTargetRect.height / 2;
     }
 
@@ -471,15 +468,20 @@
       this.#lastPaths.set(aHost, aPathData);
 
       let connector = this.#connectors.get(aHost);
-      if (!connector) {
-        connector = document.createElement("div");
-        connector.className = aIsRelated
-          ? "tree-connector related-connector"
-          : "tree-connector";
-        if (aIsRelated) {
-          aHost.append(connector);
-        } else {
-          aHost.prepend(connector);
+
+      if (!connector || !connector.isConnected || connector.parentNode !== aHost) {
+        connector = aHost.querySelector(
+          aIsRelated ? ":scope > .tree-connector.related-connector" : ":scope > .tree-connector:not(.related-connector)"
+        );
+        
+        if (!connector) {
+          connector = document.createElement("div");
+          connector.className = aIsRelated ? "tree-connector related-connector" : "tree-connector";
+          if (aIsRelated) {
+            aHost.append(connector);
+          } else {
+            aHost.prepend(connector);
+          }
         }
         this.#connectors.set(aHost, connector);
       }
@@ -488,13 +490,31 @@
 
       let svg = connector.querySelector("svg");
       if (!svg) {
-        svg = this.#createConnectorSVG();
+        svg = this.#createConnectorSVG(aIsRelated);
         connector.replaceChildren(svg);
+
+        if (!aIsRelated) {
+          svg.addEventListener("click", (e) => {
+            if (e.button !== 0) return;
+            if (!Services.prefs.getBoolPref(PREF_INTERACTIVE, false)) return;
+            
+            if (e.target.closest(".folder-connector-group")) {
+              const folder = aHost.closest("zen-folder");
+              if (folder) {
+                folder.collapsed = !folder.collapsed;
+                e.stopPropagation();
+                e.preventDefault();
+              }
+            }
+          });
+        }
       }
 
-      const path = svg.querySelector("path");
-      if (path && path.getAttribute("d") !== aPathData) {
-        path.setAttribute("d", aPathData);
+      const paths = svg.querySelectorAll("path");
+      for (const path of paths) {
+        if (path.getAttribute("d") !== aPathData) {
+          path.setAttribute("d", aPathData);
+        }
       }
     }
 
@@ -504,24 +524,42 @@
       this.#lastPaths.set(aHost, null);
 
       const connector = this.#connectors.get(aHost);
-      if (connector) connector.hidden = true;
+      if (connector) {
+        connector.hidden = true;
+      } else {
+        const hanging = aHost.querySelectorAll(":scope > .tree-connector");
+        for (const c of hanging) c.hidden = true;
+      }
     }
 
-    #createConnectorSVG() {
+    #createConnectorSVG(aIsRelated) {
       const svg = document.createElementNS(SVG_NS, "svg");
       svg.setAttribute("width", "100%");
       svg.setAttribute("height", "100%");
-      svg.style.cssText =
-        "position:absolute;top:0;inset-inline-start:0;overflow:visible;pointer-events:none;";
+      svg.classList.add("tree-connector-svg");
+      svg.style.cssText = "position:absolute;top:0;inset-inline-start:0;overflow:visible;pointer-events:none;";
 
       const g = document.createElementNS(SVG_NS, "g");
-      g.style.opacity = GEO.OPACITY;
-      g.style.stroke = "currentColor";
-      g.style.strokeWidth = `${GEO.STROKE_WIDTH}px`;
-      g.style.fill = "none";
-      g.style.strokeLinecap = "round";
+      g.classList.add("connector-group");
+      
+      if (!aIsRelated) {
+        g.classList.add("folder-connector-group");
+      }
 
-      g.appendChild(document.createElementNS(SVG_NS, "path"));
+      const hitPath = document.createElementNS(SVG_NS, "path");
+      hitPath.classList.add("connector-hitbox");
+
+      const visPath = document.createElementNS(SVG_NS, "path");
+      visPath.classList.add("connector-visible");
+      
+      visPath.style.opacity = GEO.OPACITY;
+      visPath.style.stroke = "currentColor";
+      visPath.style.strokeWidth = `${GEO.STROKE_WIDTH}px`;
+      visPath.style.fill = "none";
+      visPath.style.strokeLinecap = "round";
+
+      g.appendChild(hitPath);
+      g.appendChild(visPath);
       svg.appendChild(g);
 
       return svg;
@@ -531,10 +569,7 @@
       if (!window.gBrowser?.tabs) return;
 
       const isSwitching = window.gZenWorkspaces?.isChangingWorkspace;
-
-      const parentToChildren = this.#ownedTabsInFolder
-        ? new Map()
-        : this.#computeLineage();
+      const parentToChildren = this.#ownedTabsInFolder ? new Map() : this.#computeLineage();
 
       const newParents = new Set(parentToChildren.keys());
       const newChildren = new Set();
@@ -544,18 +579,14 @@
 
       for (const tab of this.#activeChildren) {
         if (!newChildren.has(tab)) {
-          if (isSwitching) {
-            newChildren.add(tab);
-          } else {
-            tab.classList.remove("zen-is-related-child");
-          }
+          if (isSwitching) newChildren.add(tab);
+          else tab.classList.remove("zen-is-related-child");
         }
       }
       for (const tab of this.#activeParents) {
         if (!newParents.has(tab)) {
-          if (isSwitching) {
-            newParents.add(tab);
-          } else {
+          if (isSwitching) newParents.add(tab);
+          else {
             tab.classList.remove("zen-is-related-parent");
             this.#hideRelatedConnector(tab);
           }
@@ -575,13 +606,6 @@
       this.#resizeTargetsDirty = true;
     }
 
-    /**
-     * Returns the innermost zen-folder containing the given tab,
-     * accounting for split-view group wrappers.
-     *
-     * @param {MozTabbrowserTab} aTab
-     * @returns {nsZenFolder|null}
-     */
     #getTabFolder(aTab) {
       if (!aTab) return null;
       let group = aTab.group;
@@ -631,9 +655,7 @@
     }
 
     #removeAllRelationshipClasses() {
-      for (const node of document.querySelectorAll(
-        ".zen-is-related-child, .zen-is-related-parent"
-      )) {
+      for (const node of document.querySelectorAll(".zen-is-related-child, .zen-is-related-parent")) {
         node.classList.remove("zen-is-related-child", "zen-is-related-parent");
         this.#hideRelatedConnector(node);
       }
@@ -642,9 +664,7 @@
     }
 
     #hideRelatedConnector(aElement) {
-      const connector = aElement.querySelector(
-        ":scope > .tree-connector.related-connector"
-      );
+      const connector = aElement.querySelector(":scope > .tree-connector.related-connector");
       if (connector) connector.hidden = true;
     }
 
@@ -655,18 +675,13 @@
       const currentTargets = new Set();
 
       for (const folder of window.gBrowser.tabGroups) {
-        if (
-          folder.isZenFolder &&
-          folder.tagName.toLowerCase() !== "zen-workspace-collapsible-pins"
-        ) {
+        if (folder.isZenFolder && folder.tagName.toLowerCase() !== "zen-workspace-collapsible-pins") {
           const container = folder.groupContainer;
           if (container) currentTargets.add(container);
         }
       }
 
-      for (const el of document.querySelectorAll(
-        ".zen-workspace-pinned-tabs-section, .zen-essentials-container"
-      )) {
+      for (const el of document.querySelectorAll(".zen-workspace-pinned-tabs-section, .zen-essentials-container")) {
         currentTargets.add(el);
       }
 
@@ -729,15 +744,23 @@
     #bindPrefObserver() {
       try {
         Services.prefs.addObserver(PREF_OWNED_TABS, this);
+        Services.prefs.addObserver(PREF_INTERACTIVE, this);
+        Services.prefs.addObserver(PREF_HIGHLIGHT_HOVER, this);
       } catch (e) {
         console.error("nsZenFolderTreeConnectors: Could not register pref observer.", e);
       }
     }
 
     observe(aSubject, aTopic, aData) {
-      if (aTopic === "nsPref:changed" && aData === PREF_OWNED_TABS) {
-        this.#relationshipClassesDirty = true;
-        this.scheduleUpdate(false);
+      if (aTopic === "nsPref:changed") {
+        if (aData === PREF_OWNED_TABS) {
+          this.#relationshipClassesDirty = true;
+          this.scheduleUpdate(false);
+        } else if (aData === PREF_INTERACTIVE) {
+          this.#updateInteractivePref();
+        } else if (aData === PREF_HIGHLIGHT_HOVER) {
+          this.#updateHighlightHoverPref();
+        }
       }
     }
 
@@ -765,11 +788,7 @@
 
   async function bootstrap() {
     if (!window.gBrowser || !window.gZenWorkspaces) {
-      document.addEventListener(
-        "DOMContentLoaded",
-        () => bootstrap().catch(console.error),
-        { once: true }
-      );
+      document.addEventListener("DOMContentLoaded", () => bootstrap().catch(console.error), { once: true });
       return;
     }
 
@@ -778,17 +797,23 @@
     }
 
     window.gZenFolderTreeConnectors?.uninit();
+    
     const instance = new nsZenFolderTreeConnectors();
     window.gZenFolderTreeConnectors = instance;
     instance.init();
+
+    if (typeof window.addUnloadListener === "function") {
+      window.addUnloadListener(() => {
+        instance.uninit();
+        if (window.gZenFolderTreeConnectors === instance) {
+            delete window.gZenFolderTreeConnectors;
+        }
+      });
+    }
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener(
-      "DOMContentLoaded",
-      () => bootstrap().catch(console.error),
-      { once: true }
-    );
+    document.addEventListener("DOMContentLoaded", () => bootstrap().catch(console.error), { once: true });
   } else {
     queueMicrotask(() => bootstrap().catch(console.error));
   }

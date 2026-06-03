@@ -30,3 +30,34 @@ tab.zen-is-related-child > .tab-stack {
   margin-inline-start: var(--zen-tree-connector-indent) !important;
   width: calc(100% - var(--zen-tree-connector-indent)) !important;
 }
+
+/* Interactive Folder Tree Connectors */
+.connector-hitbox {
+  stroke: transparent;
+  stroke-width: 12px; /* invisible clickable area */
+  fill: none;
+}
+
+.connector-visible {
+  transition: opacity 0.1s ease;
+}
+
+/* Enable interactivity when the preference is true */
+:root[zen-tree-connectors-interactive="true"] .folder-connector-group {
+  pointer-events: stroke; /* Restores pointer events specifically for the connector stroke */
+  cursor: pointer;
+}
+
+/* Hover */
+:root[zen-tree-connectors-interactive="true"] .folder-connector-group:hover .connector-visible {
+  stroke-width: 2px !important;
+  opacity: 0.5 !important;
+  stroke: currentColor !important;
+}
+
+/* Highlight tree on hover */
+:root[zen-tree-connectors-highlight-hover="true"] zen-folder:has(> .tab-group-label-container:hover) > .tab-group-container > .tree-connector .connector-visible {
+  opacity: 0.5 !important;
+}
+
+tab.zen-is-related-child { margin-inline-start: 14px !important; }
